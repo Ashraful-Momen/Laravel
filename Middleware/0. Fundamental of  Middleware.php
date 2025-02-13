@@ -1,0 +1,204 @@
+#Laravel Middleware: 
+---------------------
+--------->route---------->middleware-------------->controller_function_of_route
+
+[route -> middleware::class->function() -> route->controller function ]
+>>>php artisan make:middleware MiddlewareName
+
+
+#before going to the route : middleware work as controller function app/http/middleware:MiddlewareName. 
+
+
+#when hit url : pass the global middleware then goto the route---> function . 
+#Global middleware : app/Http/Kernel.php [in private middleware => add the MiddlewareName::class ]
+---------------------
+
+ protected $middleware = [
+        // \App\Http\Middleware\TrustHosts::class,
+        \App\Http\Middleware\TrustProxies::class,
+        \Fruitcake\Cors\HandleCors::class,
+        \App\Http\Middleware\CheckForMaintenanceMode::class,
+        \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
+        \App\Http\Middleware\TrimStrings::class,
+        \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+        // \App\Http\Middleware\webGuard::class,
+    ];
+
+
+
+#GroupMiddleware : Multiple middleware set as group 
+#$middlewareGroups: [
+------------------
+                    'name_of_the_group' => [
+                                        custom_middleware_1:class,
+                                        custom_middleware_1:class,
+                                        ]
+
+                    ]
+
+
+
+#routeMiddleware: from route pass the parrams in middlware function (request,close $next, $custom_fileds){  dd($custom_fields}
+-----------------
+
+#app/Http/kernal => 
+----------------------
+ protected $routeMiddleware = ['role_test' => webGuard::class,];
+
+#routeMiddleware Function (web.php=> ) : 
+---------------------------
+// routes/web.php => 
+--------------------
+Route::get('/role_test', function () {
+    return "Welcome, Admin!";
+})->middleware('role_test:admin'); // Pass 'admin' as the $roles parameter
+
+#middleWare class (with function) : 
+----------------------------------
+ public function handle(Request $request, Closure $next,$roles)
+    {
+
+        dd("from middleware",$roles);
+
+        if (Auth::check() && Auth::user()->user_type === $roles) {
+            return $next($request);
+        }
+
+        return redirect('/'); // Redirect if the user does not have the required role
+    }
+
+
+
+
+===================================================== Test the Global middleware =====================================
+>>> php artisan make:middleware webGuard
+
+#Route Middleware: *** app/Http/Kernel.php [in protected route middleware => add the MiddlewareName::class ]
+=====================================================
+**** don't forget to use >>> $php artisan optimize:clear
+
+=============================================Main Part ==========================================
+#url (hit): 
+--------------
+browser hit url : /login_user
+
+middleware: 
+-----------
+class webGuard
+{
+    /**
+     * Handle an incoming request.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Closure(\Illuminate\Http\Request): (\Illuminate\Http\Response|\Illuminate\Http\RedirectResponse)  $next
+     * @return \Illuminate\Http\Response|\Illuminate\Http\RedirectResponse
+     */
+    public function handle(Request $request, Closure $next)
+    {
+
+        dd(Session::all());
+
+        if(Session::has('user_id')){
+            echo "hello";
+            return $next($request);
+        }
+        else{
+            dd('your not authorized');
+            
+        }
+    }
+}
+==========================================================================
+app/Http/kernal=> 
+----------------
+    protected $routeMiddleware = [
+        'auth' => \App\Http\Middleware\Authenticate::class,
+        'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
+        'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,
+        'can' => \Illuminate\Auth\Middleware\Authorize::class,
+        'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
+        'password.confirm' => \Illuminate\Auth\Middleware\RequirePassword::class,
+        'signed' => \Illuminate\Routing\Middleware\ValidateSignature::class,
+        'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
+        'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
+        'webGuard' => \App\Http\Middleware\webGuard::class,
+    ];
+-----------------------------------------------------------
+route: 
+------
+
+Route::get('/', function () {
+    dd("hello");
+    return view('welcome');
+});
+
+
+Route::get('/login_user',function(){
+
+    dd("Login");
+    Session::put('user_id',1);
+    echo "LoggedIn ";
+    return redirect('/');
+});
+
+Route::get('/logout_user',function(){
+    Session::forget('user_id');
+    echo "Logout ";
+    return redirect('/');
+});
+
+Route::get('/check_user',function(){
+    return "Your are authorized";
+})->middleware('webGuard');
+================================================Group middle ware==============================
+middleware: 
+============
+>>> php artisan make:middleware authcheck
+>>> php artisan make:middleware webguard
+
+#define middleware function as well as previous code . 
+------------------------------------
+kernal.php=> 
+--------------
+ protected $middlewareGroups = [
+        'web' => [
+            \App\Http\Middleware\EncryptCookies::class,
+            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            // \Illuminate\Session\Middleware\AuthenticateSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \App\Http\Middleware\VerifyCsrfToken::class,
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+        ],
+
+        'api' => [
+            #add multiple middleware::class ,
+            // \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            'throttle:api',
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+        ],
+        'group_name_of_middlewares' => [
+        #add multiple middleware::class ,
+            webGuard::class,
+            authGuard::class,
+        ]
+    ];
+-----------------------
+Route:=> 
+------------------------
+Route::group(['as' => 'childDealer.', 'prefix' => 'childDealer', 'namespace' => 'ChildDealer', 'middleware' => ['auth', 'childDealer']], function () {
+
+    Route::get('/dashboard', 'Frontend\HomeController@dashboard')->name('user.dashboard');
+    
+    return view('dashboard');
+});
+----------------------------------------
+Route::group([
+    'as' => 'childDealer.', // This route will be named 'childDealer.dashboard' . *** Use in before route name . 
+    'prefix' => 'childDealer',  // This route will be accessed at '/childDealer/dashboard' . *** use in before url. 
+    'namespace' => 'ChildDealer', // This assumes the controller class is in the App\Http\Controllers\ChildDealer namespace
+    'middleware' => ['auth', 'childDealer'] 
+], function () {
+    Route::get('dashboard', 'ChildDealerController@dashboard')->name('dashboard');
+    Route::get('profile', 'ChildDealerController@profile')->name('profile');
+});
