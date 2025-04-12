@@ -1,0 +1,586 @@
+# Laravel ORM Comprehensive Developer Guide
+
+This comprehensive guide covers Laravel's Eloquent ORM (Object-Relational Mapping) system, from basic relationships to advanced polymorphic relationships and event listeners.
+
+## Table of Contents
+
+1. [Basic Relationships](#basic-relationships)
+   - [One-to-One](#one-to-one)
+   - [One-to-Many](#one-to-many)
+   - [Many-to-Many](#many-to-many)
+2. [Advanced Relationships](#advanced-relationships)
+   - [Has-Many-Through](#has-many-through)
+   - [Polymorphic Relationships](#polymorphic-relationships)
+   - [Many-to-Many Polymorphic](#many-to-many-polymorphic)
+3. [Working with Pivot Tables](#working-with-pivot-tables)
+   - [Timestamps in Pivot Tables](#timestamps-in-pivot-tables)
+   - [Additional Columns in Pivot Tables](#additional-columns-in-pivot-tables)
+   - [Custom Pivot Models](#custom-pivot-models)
+4. [Model Events](#model-events)
+5. [Query Optimization](#query-optimization)
+
+## Basic Relationships
+
+### One-to-One
+
+One-to-one relationships connect two models where each record in the first model has exactly one corresponding record in the second model.
+
+**Example**: A User has one Address
+
+```php
+// User Model
+public function address() {
+    return $this->hasOne(Address::class, 'user_id', 'id');
+}
+
+// Address Model
+public function user() {
+    return $this->belongsTo(User::class, 'user_id', 'id');
+}
+```
+
+**Relationship Diagram**:
+```
+┌──────────┐          ┌───────────┐
+│   User   │          │  Address  │
+├──────────┤          ├───────────┤
+│ id       │◄────────┤ user_id   │
+│ name     │  1    1  │ country   │
+│ email    │          │           │
+└──────────┘          └───────────┘
+```
+
+**Creating and Associating Records**:
+
+```php
+// Creating a new user with an address
+$user = User::factory()->create();
+$address = new Address(['country' => 'Malaysia']);
+
+$address->user()->associate($user);
+$address->save();
+
+// Alternative approach with the relationship
+$user->address()->create(['country' => 'Bangladesh']);
+```
+
+**Handling Null Relationships**:
+
+```php
+// Using withDefault to provide default values
+public function user() {
+    return $this->belongsTo(User::class)->withDefault([
+        'name' => 'Guest User',
+    ]);
+}
+```
+
+### One-to-Many
+
+One-to-many relationships connect two models where a single record in the first model has multiple corresponding records in the second model.
+
+**Example**: A User has many Posts
+
+```php
+// User Model
+public function posts() {
+    return $this->hasMany(Post::class, 'user_id', 'id');
+}
+
+// Post Model
+public function user() {
+    return $this->belongsTo(User::class, 'user_id');
+}
+```
+
+**Relationship Diagram**:
+```
+┌──────────┐          ┌───────────┐
+│   User   │          │   Post    │
+├──────────┤          ├───────────┤
+│ id       │◄────────┤ user_id   │
+│ name     │  1    N  │ title     │
+│ email    │          │ content   │
+└──────────┘          └───────────┘
+```
+
+**Creating Records**:
+
+```php
+// Adding a post to a user
+$user = User::find(1);
+$user->posts()->create([
+    'title' => 'New Post Title',
+    'content' => 'Post content...'
+]);
+```
+
+**Retrieving Related Records**:
+
+```php
+// Get all posts for a user
+$posts = User::find(1)->posts;
+
+// Iterating through posts
+foreach ($user->posts as $post) {
+    echo $post->title;
+}
+
+// Using pluck for specific columns
+$postTitles = $user->posts->pluck('title')->toArray();
+```
+
+### Many-to-Many
+
+Many-to-many relationships connect two models where each record in the first model can have multiple corresponding records in the second model, and vice versa.
+
+**Example**: Posts and Tags (a post can have many tags, and a tag can be applied to many posts)
+
+```php
+// Post Model
+public function tags() {
+    return $this->belongsToMany(Tag::class, 'post_tag', 'post_id', 'tag_id');
+}
+
+// Tag Model
+public function posts() {
+    return $this->belongsToMany(Post::class, 'post_tag', 'tag_id', 'post_id');
+}
+```
+
+**Relationship Diagram**:
+```
+┌──────────┐    ┌──────────────┐    ┌───────────┐
+│   Post   │    │   post_tag   │    │    Tag    │
+├──────────┤    ├──────────────┤    ├───────────┤
+│ id       │◄───┤ post_id      │───►│ id        │
+│ title    │    │ tag_id       │    │ name      │
+└──────────┘    └──────────────┘    └───────────┘
+```
+
+**Working with Pivot Tables**:
+
+```php
+// Attaching tags to posts
+$post = Post::find(1);
+$post->tags()->attach([1, 2, 3]);  // Attach multiple tags
+
+// Detaching tags
+$post->tags()->detach([2]);  // Detach specific tag(s)
+$post->tags()->detach();     // Detach all tags
+
+// Syncing tags (removes existing and adds new)
+$post->tags()->sync([1, 3, 4]);
+```
+
+## Advanced Relationships
+
+### Has-Many-Through
+
+Has-many-through relationships provide a convenient way to access distant relations through an intermediate relation.
+
+**Example**: A Project has many Tasks through Users
+
+```php
+// Project Model
+public function tasks() {
+    return $this->hasManyThrough(
+        Task::class,      // Final model we want to access
+        User::class,      // Intermediate model
+        'project_id',     // FK on intermediate model (User)
+        'user_id',        // FK on final model (Task)
+        'id',             // PK on current model (Project)
+        'id'              // PK on intermediate model (User)
+    );
+}
+```
+
+**Relationship Diagram**:
+```
+┌──────────┐     ┌──────────┐     ┌───────────┐
+│  Project │     │   User   │     │   Task    │
+├──────────┤     ├──────────┤     ├───────────┤
+│ id       │────►│ project_id    │     user_id│◄───┐
+│ title    │  1:N│ name     │  1:N│ title     │    │
+└──────────┘     └──────────┘     └───────────┘    │
+      │                                             │
+      └─────────────────────────────────────────────┘
+                   HasManyThrough
+```
+
+**With Many-to-Many Intermediate Table**:
+
+For Projects and Users connected by a pivot table (team), we need a custom approach:
+
+```php
+// Project Model
+public function tasks() {
+    return $this->hasManyThrough(
+        Task::class,       // Final model
+        Team::class,       // Pivot model
+        'project_id',      // FK on pivot table (Team)
+        'user_id',         // FK on final model (Task)
+        'id',              // PK on current model (Project)
+        'user_id'          // User ID on pivot table (Team)
+    );
+}
+```
+
+**Relationship Diagram (with Pivot)**:
+```
+┌──────────┐    ┌──────────────┐    ┌───────────┐    ┌───────────┐
+│  Project │    │     Team     │    │   User    │    │   Task    │
+├──────────┤    ├──────────────┤    ├───────────┤    ├───────────┤
+│ id       │◄───┤ project_id   │    │ id        │◄───┤ user_id   │
+│ title    │    │ user_id      │───►│ name      │    │ title     │
+└──────────┘    └──────────────┘    └───────────┘    └───────────┘
+      │                                                     ▲
+      └─────────────────────────────────────────────────────┘
+                        HasManyThrough
+```
+
+### Polymorphic Relationships
+
+Polymorphic relationships allow a model to belong to more than one type of model using a single association.
+
+**Example**: Comments that can belong to Posts, Videos, or other models
+
+```php
+// Comment Migration
+Schema::create('comments', function (Blueprint $table) {
+    $table->id();
+    $table->bigInteger('user_id');
+    $table->text('body');
+    $table->morphs('commentable');  // Creates commentable_id and commentable_type
+    $table->timestamps();
+});
+
+// Comment Model
+public function commentable() {
+    return $this->morphTo();
+}
+
+// Post Model
+public function comments() {
+    return $this->morphMany(Comment::class, 'commentable');
+}
+
+// Video Model
+public function comments() {
+    return $this->morphMany(Comment::class, 'commentable');
+}
+```
+
+**Relationship Diagram**:
+```
+          ┌───────────┐
+          │  Comment  │
+          ├───────────┤
+          │ id        │
+          │ user_id   │
+          │ body      │
+          │ commentable_id   │
+          │ commentable_type │
+          └───────────┘
+             ▲     ▲
+             │     │
+ ┌───────────┘     └───────────┐
+ │                             │
+┌┴──────────┐          ┌──────┴─────┐
+│   Post    │          │   Video    │
+├───────────┤          ├────────────┤
+│ id        │          │ id         │
+│ title     │          │ title      │
+└───────────┘          └────────────┘
+```
+
+**Creating and Retrieving Polymorphic Records**:
+
+```php
+// Adding a comment to a post
+$post = Post::find(1);
+$post->comments()->create([
+    'user_id' => 1,
+    'body' => 'A comment on a post'
+]);
+
+// Adding a comment to a video
+$video = Video::find(1);
+$video->comments()->create([
+    'user_id' => 1,
+    'body' => 'A comment on a video'
+]);
+
+// Getting the parent model from a comment
+$comment = Comment::find(1);
+$commentable = $comment->commentable;  // Returns Post or Video instance
+```
+
+### Many-to-Many Polymorphic
+
+Many-to-many polymorphic relationships allow models to share polymorphic relations.
+
+**Example**: Tags that can be attached to Posts, Videos, or other models
+
+```php
+// Taggables Migration
+Schema::create('taggables', function (Blueprint $table) {
+    $table->bigInteger('tag_id');
+    $table->bigInteger('taggable_id');
+    $table->string('taggable_type');
+});
+
+// Tag Model
+public function posts() {
+    return $this->morphedByMany(Post::class, 'taggable');
+}
+
+public function videos() {
+    return $this->morphedByMany(Video::class, 'taggable');
+}
+
+// Post Model
+public function tags() {
+    return $this->morphToMany(Tag::class, 'taggable');
+}
+
+// Video Model
+public function tags() {
+    return $this->morphToMany(Tag::class, 'taggable');
+}
+```
+
+**Relationship Diagram**:
+```
+             ┌───────────┐
+             │    Tag    │
+             ├───────────┤
+             │ id        │
+             │ name      │
+             └───────────┘
+                ▲     ▲
+                │     │
+     ┌──────────┘     └──────────┐
+     │                           │
+┌────┴────────┐         ┌───────┴──────┐
+│  taggables  │◄───────►│  taggables   │
+├─────────────┤         ├──────────────┤
+│ tag_id      │         │ tag_id       │
+│ taggable_id │         │ taggable_id  │
+│ taggable_type = Post │ │ taggable_type = Video │
+└─────────────┘         └──────────────┘
+       ▲                        ▲
+       │                        │
+       │                        │
+┌──────┴──────┐         ┌──────┴─────┐
+│    Post     │         │   Video    │
+├─────────────┤         ├────────────┤
+│ id          │         │ id         │
+│ title       │         │ title      │
+└─────────────┘         └────────────┘
+```
+
+**Creating and Retrieving Relationships**:
+
+```php
+// Attaching a tag to a post
+$post = Post::find(1);
+$post->tags()->create(['name' => 'Laravel']);
+
+// Alternative with existing tag
+$tag = Tag::create(['name' => 'PHP']);
+$post->tags()->attach($tag);
+
+// Attaching a tag to a video
+$video = Video::find(1);
+$tag = Tag::find(1);  // Existing tag
+$video->tags()->attach($tag);
+
+// Getting all posts with a specific tag
+$tag = Tag::find(1);
+$posts = $tag->posts;
+
+// Getting all videos with a specific tag
+$tag = Tag::find(1);
+$videos = $tag->videos;
+```
+
+## Working with Pivot Tables
+
+### Timestamps in Pivot Tables
+
+You can automatically maintain timestamps on pivot tables:
+
+```php
+// In migration
+Schema::create('post_tag', function (Blueprint $table) {
+    $table->bigInteger('post_id');
+    $table->bigInteger('tag_id');
+    $table->timestamps();  // Add this line
+});
+
+// In model
+public function tags() {
+    return $this->belongsToMany(Tag::class)
+                ->withTimestamps();  // Add this to enable timestamps
+}
+```
+
+### Additional Columns in Pivot Tables
+
+You can add and access additional columns in pivot tables:
+
+```php
+// In migration
+Schema::create('post_tag', function (Blueprint $table) {
+    $table->bigInteger('post_id');
+    $table->bigInteger('tag_id');
+    $table->string('status')->nullable();  // Additional column
+    $table->timestamps();
+});
+
+// In model
+public function tags() {
+    return $this->belongsToMany(Tag::class)
+                ->withPivot('status')  // Access additional columns
+                ->withTimestamps();
+}
+```
+
+**Accessing and Setting Additional Columns**:
+
+```php
+// Setting values when attaching
+$post->tags()->attach([
+    1 => ['status' => 'approved']
+]);
+
+// Accessing pivot data
+$posts = Post::with('tags')->get();
+foreach ($posts as $post) {
+    foreach ($post->tags as $tag) {
+        echo $tag->pivot->status;
+        echo $tag->pivot->created_at;
+    }
+}
+```
+
+### Custom Pivot Models
+
+You can create custom pivot models for advanced functionality:
+
+```php
+// Custom pivot model
+class PostTag extends Pivot {
+    protected $table = 'post_tag';
+    
+    // Add event listeners
+    protected static function boot() {
+        parent::boot();
+        
+        static::created(function ($item) {
+            // Handle pivot creation event
+        });
+    }
+}
+
+// In Post model
+public function tags() {
+    return $this->belongsToMany(Tag::class)
+                ->using(PostTag::class)  // Use custom pivot model
+                ->withPivot('status')
+                ->withTimestamps();
+}
+```
+
+## Model Events
+
+Laravel allows you to hook into various model lifecycle events:
+
+```php
+// In your model's boot method
+protected static function boot() {
+    parent::boot();
+    
+    static::created(function ($model) {
+        // Called after a model is created
+    });
+    
+    static::updated(function ($model) {
+        // Called after a model is updated
+    });
+    
+    static::deleted(function ($model) {
+        // Called after a model is deleted
+    });
+    
+    static::saved(function ($model) {
+        // Called after a model is created or updated
+    });
+}
+```
+
+## Query Optimization
+
+### Eager Loading
+
+Eager loading helps prevent the N+1 query problem:
+
+```php
+// Without eager loading (N+1 problem)
+$posts = Post::all();
+foreach ($posts as $post) {
+    echo $post->user->name;  // Each iteration requires a separate query
+}
+
+// With eager loading
+$posts = Post::with('user')->get();
+foreach ($posts as $post) {
+    echo $post->user->name;  // No additional queries
+}
+
+// Multiple relationships
+$posts = Post::with(['user', 'tags'])->get();
+```
+
+### Query Constraints with Relationships
+
+```php
+// Filter users who have posts
+$users = User::has('posts')->get();
+
+// Filter users who have at least 2 posts
+$users = User::has('posts', '>=', 2)->get();
+
+// Filter with custom conditions
+$users = User::whereHas('posts', function ($query) {
+    $query->where('title', 'like', '%Laravel%');
+})->get();
+
+// Filter users who don't have any posts
+$users = User::doesntHave('posts')->get();
+```
+
+### Selecting Specific Columns
+
+```php
+// Select only specific columns
+$users = User::select('id', 'name')->get();
+
+// With relationships
+$posts = Post::select('id', 'title')
+            ->with(['user' => function ($query) {
+                $query->select('id', 'name');
+            }])
+            ->get();
+```
+
+### Lazy Loading
+
+```php
+// Lazy load when needed
+$user = User::find(1);
+$addresses = $user->address()->lazy()->get();
+```
+
+This comprehensive guide covers most aspects of Laravel's Eloquent ORM system. For specific use cases or more advanced scenarios, refer to the Laravel documentation.
