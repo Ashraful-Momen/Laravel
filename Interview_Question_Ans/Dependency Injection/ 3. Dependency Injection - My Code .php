@@ -7,6 +7,8 @@
  ------------
   Interface PaymentInterface {
 
+  // interface : child class must be implemented all the interface function. inherited by multiple time. 
+  // abstruction : child class partially implemented the base class function. inherited by one time.  
   //in interface or abstruction only define the function not implement full code : 
 
   public function paymentProcess(); 
