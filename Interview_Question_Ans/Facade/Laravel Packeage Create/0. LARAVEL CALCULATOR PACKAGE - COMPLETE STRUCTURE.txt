@@ -1,0 +1,19 @@
+===============================================
+LARAVEL CALCULATOR PACKAGE - COMPLETE STRUCTURE
+===============================================
+
+your-calculator-package/
+├── src/
+│   ├── CalculatorService.php
+│   ├── Facades/
+│   │   └── Calculator.php
+│   └── CalculatorServiceProvider.php
+├── config/
+│   └── calculator.php
+├── tests/
+│   ├── TestCase.php
+│   └── CalculatorTest.php
+├── .gitignore
+├── composer.json
+├── README.md
+└── LICENSE
