@@ -1,0 +1,43 @@
+{
+    "name": "yourvendor/laravel-calculator",
+    "description": "A simple calculator package for Laravel with Facade support",
+    "keywords": ["laravel", "calculator", "facade", "math"],
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Your Name",
+            "email": "your.email@example.com"
+        }
+    ],
+    "require": {
+        "php": "^7.4|^8.0",
+        "illuminate/support": "^8.0|^9.0|^10.0|^11.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.0",
+        "orchestra/testbench": "^6.0|^7.0|^8.0|^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "YourVendor\\Calculator\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "YourVendor\\Calculator\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "YourVendor\\Calculator\\CalculatorServiceProvider"
+            ],
+            "aliases": {
+                "Calculator": "YourVendor\\Calculator\\Facades\\Calculator"
+            }
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
