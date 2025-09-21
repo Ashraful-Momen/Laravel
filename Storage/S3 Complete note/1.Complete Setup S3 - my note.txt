@@ -9,7 +9,7 @@
 5. Create a Middleware for Storage Check > app > http > Middleware > CheckStorageConnection.php 
 6. create a helper function
 7. Register Middleware into the kernal 
-8. add file[] into the > composer.json
+8. add file[] into the > composer.json and Run >  composer dump-autoload after this change.
 9. *** chceck the folder permission either synchronize is not work . 
 
 
