@@ -1,0 +1,1100 @@
+#s3 update code for life and health: 
+-------------------------------------
+=>  use S3 for microservice : for file storage use s3 bucket if s3 connection is off then use the local storage for fallback.  
+
+1. First setup the env (asscess_key, secret_key, url , s3 = bucket_name) 
+2. configure the : config > filesystems.php : primary => s3 , fallback => local disk.
+3. write a service : app > service > StorageService.php => write a function for getting active disk : local / s3 , queueForSync etc. 
+4. set the App > Provider > appServiceProvider. 
+5. Create a Middleware for Storage Check > app > http > Middleware > CheckStorageConnection.php 
+6. create a helper function
+7. Register Middleware into the kernal 
+8. add file[] into the > composer.json
+9. *** chceck the folder permission either synchronize is not work . 
+
+
+docker-stack.yml > 
+-------------------
+version: '3.8'
+
+services:
+  # Laravel App with S3 environment variables
+  app:
+    image: instasure-dockerized_app:latest
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    working_dir: /var/www/html
+    environment:
+      # Database Configuration
+      - DB_CONNECTION=mysql
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=laravel_db
+      - DB_USERNAME=laravel_user
+      - DB_PASSWORD=laravel_password
+
+      # Redis Configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+
+      # S3 Configuration
+      - FILESYSTEM_DRIVER=s3
+      # - S3_KEY=test
+      - S3_KEY=YIWBL4D04XN2XK6KDD87
+      - S3_SECRET=Ro06JYVkWpkQKqwbAnVrjhRbnNSieIKUIqmn7ZoR
+      - S3_REGION=us-east-1
+      - S3_BUCKET=instasure //bucket_name
+      - S3_URL=https://s3.brilliant.com.bd/instasure
+      - S3_ENDPOINT=https://s3.brilliant.com.bd
+      - S3_USE_PATH_STYLE=true
+
+      # Storage Configuration
+      - STORAGE_PRIMARY=s3
+      - STORAGE_FALLBACK=fallback
+      # - STORAGE_FALLBACK=local
+      - STORAGE_SYNC_ENABLED=true
+      - STORAGE_AUTO_RETRY=true
+      - STORAGE_MAX_RETRIES=3
+
+      # App Configuration
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - APP_URL=http://36.255.69.72:8080
+    volumes:
+      - /home/ashraful/gitlab_project/instasure-dockerized:/var/www/html
+      - /home/ashraful/gitlab_project/instasure-dockerized/docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - laravel_network  # ADD THIS LINE
+    depends_on:
+      - mysql
+      - redis
+
+  # Nginx with proper configuration
+  nginx:
+    image: nginx:alpine
+    deploy:
+      replicas: 1
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /home/ashraful/gitlab_project/instasure-dockerized:/var/www/html
+      - /home/ashraful/gitlab_project/instasure-dockerized/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - laravel_network
+    depends_on:
+      - app
+
+  # MySQL - unchanged
+  mysql:
+    image: mysql:8.0
+    deploy:
+      replicas: 1
+    environment:
+      - MYSQL_DATABASE=laravel_db
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_USER=laravel_user
+      - MYSQL_PASSWORD=laravel_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - /home/ashraful/gitlab_project/instasure-dockerized/docker/mysql/my.cnf:/etc/mysql/my.cnf
+    networks:
+      - laravel_network
+
+  # Redis - unchanged
+  redis:
+    image: redis:7-alpine
+    deploy:
+      replicas: 1
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - laravel_network
+
+  # Node.js - unchanged
+  node:
+    image: node:18-alpine
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: none
+    working_dir: /var/www/html
+    volumes:
+      - /home/ashraful/gitlab_project/instasure-dockerized:/var/www/html
+    networks:
+      - laravel_network
+    command: sh -c "npm install && npm run dev"
+
+  # PHPMyAdmin - unchanged
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    deploy:
+      replicas: 1
+    environment:
+      - PMA_HOST=mysql
+      - PMA_PORT=3306
+      - PMA_USER=root
+      - PMA_PASSWORD=root_password
+    ports:
+      - "8081:80"
+    volumes:
+      - /home/ashraful/gitlab_project/instasure-dockerized/docker/phpmyadmin/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+    networks:
+      - laravel_network
+    depends_on:
+      - mysql
+
+
+ # Dedicated Scheduler Service Run the cron jobs for smart s3 backup.
+  scheduler:
+    image: instasure-dockerized_app:latest
+    deploy:
+      replicas: 1   # Always just ONE scheduler
+      restart_policy:
+        condition: on-failure
+    working_dir: /var/www/html
+    command: >
+      sh -c "while true; do php artisan schedule:run >> /var/www/html/storage/logs/cron.log 2>&1; sleep 60; done"
+    volumes:
+      - /home/ashraful/gitlab_project/instasure-dockerized:/var/www/html
+      - /home/ashraful/gitlab_project/instasure-dockerized/docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - laravel_network
+    depends_on:
+      - mysql
+      - redis
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  laravel_network:
+    driver: overlay
+    attachable: true
+
+
+
+
+
+
+app > Services > StorageService.php
+------------------------------------
+<?php
+// app/Services/StorageService.php
+
+namespace App\Services;
+
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
+use Aws\S3\Exception\S3Exception;
+use Exception;
+
+class StorageService
+{
+    protected $primaryDisk;
+    protected $fallbackDisk;
+    protected $syncEnabled;
+    protected $autoRetry;
+    protected $maxRetries;
+    protected $isS3Available;
+
+    public function __construct()
+    {
+        $config = config('filesystems.storage_config');
+        $this->primaryDisk = $config['primary_disk'];
+        $this->fallbackDisk = $config['fallback_disk'];
+        $this->syncEnabled = $config['sync_enabled'];
+        $this->autoRetry = $config['auto_retry'];
+        $this->maxRetries = $config['max_retries'];
+        $this->isS3Available = $this->checkS3Connection();
+    }
+
+    /**
+     * Check S3 connection with proper error handling
+     */
+    protected function checkS3Connection(): bool
+    {
+        try {
+            // Use a simple operation to test connection - list files in root
+            Storage::disk('s3')->files('/');
+            return true;
+        } catch (S3Exception $e) {
+            Log::warning('S3 connection failed: ' . $e->getMessage());
+            return false;
+        } catch (Exception $e) {
+            Log::error('Storage connection check error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get active disk based on availability (with real-time check)
+     */
+    // protected function getActiveDisk(): string
+    // {
+    //     // Always check S3 availability in real-time
+    //     $this->isS3Available = $this->checkS3Connection();
+    //     return $this->isS3Available ? $this->primaryDisk : $this->fallbackDisk;
+    // }
+
+
+    protected function getActiveDisk(): string
+    {
+        // Always check S3 availability in real-time
+        $this->isS3Available = $this->checkS3Connection();
+        $disk = $this->isS3Available ? $this->primaryDisk : $this->fallbackDisk;
+
+        Log::info("getActiveDisk - S3 available: " . ($this->isS3Available ? 'YES' : 'NO'));
+        Log::info("getActiveDisk - Primary: {$this->primaryDisk}, Fallback: {$this->fallbackDisk}");
+        Log::info("getActiveDisk - Returning: {$disk}");
+
+        return $disk;
+    }
+
+
+
+
+    /**
+     * Store file with automatic fallback
+     */
+    // public function store(string $path, $contents, array $options = []): bool
+    // {
+    //     $activeDisk = $this->getActiveDisk();
+    //     $retryCount = 0;
+
+    //     while ($retryCount <= $this->maxRetries) {
+    //         try {
+    //             $success = Storage::disk($activeDisk)->put($path, $contents, $options);
+
+    //             if ($success && $this->syncEnabled && $activeDisk === $this->fallbackDisk) {
+    //                 $this->queueForSync($path);
+    //             }
+
+    //             return $success;
+    //         } catch (Exception $e) {
+    //             $retryCount++;
+
+    //             if ($retryCount > $this->maxRetries || !$this->autoRetry) {
+    //                 Log::error("Failed to store file after {$retryCount} attempts: " . $e->getMessage());
+    //                 return false;
+    //             }
+
+    //             // Switch to fallback on failure and re-check connection
+    //             if ($activeDisk === $this->primaryDisk) {
+    //                 $activeDisk = $this->fallbackDisk;
+    //                 $this->isS3Available = false;
+    //                 Log::warning("Switched to fallback storage after S3 failure: " . $e->getMessage());
+    //             }
+
+    //             sleep(1); // Wait before retry
+    //         }
+    //     }
+
+    //     return false;
+    // }
+
+    /**
+     * Queue file for synchronization
+     */
+    protected function queueForSync(string $path): void
+    {
+        $syncQueue = Cache::get('storage_sync_queue', []);
+
+        // Avoid duplicates
+        if (!in_array($path, array_column($syncQueue, 'path'))) {
+            $syncQueue[] = [
+                'path' => $path,
+                'disk' => $this->fallbackDisk,
+                'timestamp' => now(),
+                'attempts' => 0,
+            ];
+            Cache::put('storage_sync_queue', $syncQueue, 86400); // 24 hour
+        }
+    }
+
+    /**
+     * Synchronize files from local to S3
+     */
+
+    //previous code :
+    public function synchronize(): array
+    {
+        if (!$this->checkS3Connection()) {
+            return ['success' => false, 'message' => 'S3 not available'];
+        }
+
+        $syncQueue = Cache::get('storage_sync_queue', []);
+        $results = ['successful' => 0, 'failed' => 0, 'errors' => []];
+
+        foreach ($syncQueue as $index => &$file) {
+            try {
+                // Read from public directory
+                $localPath = public_path('instasure/' . $file['path']);
+
+                if (file_exists($localPath)) {
+                    $contents = file_get_contents($localPath);
+
+                    // Store to S3
+                    $success = Storage::disk('s3')->put($file['path'], $contents);
+
+                    if ($success) {
+                        $results['successful']++;
+                        unset($syncQueue[$index]);
+                    } else {
+                        $file['attempts']++;
+                        $results['failed']++;
+                        $results['errors'][] = "Failed to sync: {$file['path']} (attempt {$file['attempts']})";
+                    }
+                } else {
+                    unset($syncQueue[$index]); // Remove non-existent files
+                }
+            } catch (Exception $e) {
+                $file['attempts']++;
+                $results['failed']++;
+                $results['errors'][] = "Error syncing {$file['path']}: " . $e->getMessage();
+            }
+        }
+
+        Cache::put('storage_sync_queue', array_values($syncQueue), 86400);
+        return $results;
+    }
+
+    //new synchronize function :______________________________
+
+    /**
+     * Check if S3 is available (real-time check)
+     */
+    public function isS3Available(): bool
+    {
+        return $this->checkS3Connection();
+    }
+
+    /**
+     * Force check S3 connection
+     */
+    public function checkConnection(): bool
+    {
+        $this->isS3Available = $this->checkS3Connection();
+        return $this->isS3Available;
+    }
+
+    /**
+     * Get file URL
+     */
+    public function url(string $path): string
+    {
+        try {
+            if ($this->checkS3Connection()) {
+                return Storage::disk('s3')->url($path);
+            }
+            // Return URL for public directory file
+            return url('/instasure/' . $path);
+        } catch (Exception $e) {
+            return url('/instasure/' . $path);
+        }
+    }
+
+    /**
+     * Proxy method calls to appropriate disk
+     */
+    public function __call($method, $args)
+    {
+        $activeDisk = $this->getActiveDisk();
+        return Storage::disk($activeDisk)->$method(...$args);
+    }
+
+    /**
+     * Store file with automatic fallback : claude .....
+     */
+
+    /**
+     * Store file with automatic fallback
+     */
+
+    public function store(string $path, $contents, array $options = []): bool
+    {
+        $activeDisk = $this->getActiveDisk();
+        $retryCount = 0;
+
+        // Debug: Check what disks are available
+        Log::info("Available disks: " . json_encode(config('filesystems.disks')));
+        Log::info("Fallback disk config: " . json_encode(config('filesystems.disks.fallback')));
+
+        // Ensure we're using the right fallback disk name
+        if ($activeDisk === 'local' && $this->fallbackDisk === 'fallback') {
+            Log::warning("Disk mismatch detected - using 'fallback' instead of 'local'");
+            $activeDisk = 'fallback';
+        }
+
+        Log::info("StorageService: Using disk '{$activeDisk}' for path: {$path}");
+
+        while ($retryCount <= $this->maxRetries) {
+            try {
+                // Check if the disk exists
+                if (!config("filesystems.disks.{$activeDisk}")) {
+                    Log::error("Disk '{$activeDisk}' not found in configuration!");
+                    throw new Exception("Disk '{$activeDisk}' not configured");
+                }
+
+                // Try Laravel storage first
+                $success = Storage::disk($activeDisk)->put($path, $contents, $options);
+
+                if ($success) {
+                    Log::info("Successfully stored using Laravel Storage on {$activeDisk}");
+
+                    // Verify file exists
+                    $fullPath = Storage::disk($activeDisk)->path($path);
+                    if (file_exists($fullPath)) {
+                        Log::info("File verified at: {$fullPath}");
+                    } else {
+                        Log::warning("File not found after storage at: {$fullPath}");
+                    }
+
+                    if ($this->syncEnabled && $activeDisk === $this->fallbackDisk) {
+                        $this->queueForSync($path);
+                    }
+                    return true;
+                } else {
+                    Log::warning("Storage::disk({$activeDisk})->put() returned false");
+                }
+
+            } catch (Exception $e) {
+                Log::error("Laravel storage failed on {$activeDisk}: " . $e->getMessage());
+                Log::error("Exception trace: " . $e->getTraceAsString());
+
+                // For fallback disk, try manual file creation with better error handling
+                if ($activeDisk === $this->fallbackDisk || $activeDisk === 'fallback') {
+                    try {
+                        $localPath = public_path('instasure/' . $path);
+                        $directory = dirname($localPath);
+
+                        Log::info("Attempting manual file creation at: {$localPath}");
+                        Log::info("Directory: {$directory}");
+
+                        // Check directory existence and permissions
+                        if (!is_dir($directory)) {
+                            Log::info("Directory does not exist, creating...");
+                            $created = @mkdir($directory, 0755, true);
+                            if ($created) {
+                                Log::info("Directory created successfully");
+                                // Set ownership to web server user if possible
+                                @chown($directory, 'www-data');
+                                @chgrp($directory, 'www-data');
+                            } else {
+                                $error = error_get_last();
+                                Log::error("mkdir failed: " . ($error ? $error['message'] : 'Unknown error'));
+                            }
+                        } else {
+                            Log::info("Directory already exists");
+                            // Check if writable
+                            if (!is_writable($directory)) {
+                                Log::error("Directory exists but is not writable!");
+                            }
+                        }
+
+                        // Try to write file
+                        $written = @file_put_contents($localPath, $contents);
+                        if ($written !== false) {
+                            @chmod($localPath, 0644);
+                            @chown($localPath, 'www-data');
+                            Log::info("Manual file creation SUCCESS: {$localPath} ({$written} bytes)");
+
+                            if ($this->syncEnabled) {
+                                $this->queueForSync($path);
+                            }
+                            return true;
+                        } else {
+                            $error = error_get_last();
+                            Log::error("file_put_contents failed: " . ($error ? $error['message'] : 'Unknown error'));
+                        }
+
+                    } catch (Exception $manualException) {
+                        Log::error("Manual file creation exception: " . $manualException->getMessage());
+                    }
+                }
+
+                $retryCount++;
+                if ($retryCount > $this->maxRetries || !$this->autoRetry) {
+                    Log::error("Failed to store file after {$retryCount} attempts");
+                    return false;
+                }
+
+                // Switch to fallback
+                if ($activeDisk === $this->primaryDisk) {
+                    $activeDisk = $this->fallbackDisk;
+                    $this->isS3Available = false;
+                    Log::warning("Switched to fallback storage: {$activeDisk}");
+                }
+
+                sleep(1);
+            }
+        }
+
+        return false;
+    }
+
+    // public function store(string $path, $contents, array $options = []): bool
+    // {
+    //     $activeDisk = $this->getActiveDisk();
+    //     $retryCount = 0;
+
+    //     Log::info("StorageService: Using disk '{$activeDisk}' for path: {$path}");
+
+    //     while ($retryCount <= $this->maxRetries) {
+    //         try {
+    //             // Try Laravel storage first
+    //             $success = Storage::disk($activeDisk)->put($path, $contents, $options);
+
+    //             if ($success) {
+    //                 Log::info("Successfully stored using Laravel Storage on {$activeDisk}");
+
+    //                 if ($this->syncEnabled && $activeDisk === $this->fallbackDisk) {
+    //                     $this->queueForSync($path);
+    //                 }
+    //                 return true;
+    //             }
+
+    //         } catch (Exception $e) {
+    //             Log::error("Laravel storage failed on {$activeDisk}: " . $e->getMessage());
+
+    //             // For fallback disk, try manual file creation with better error handling
+    //             if ($activeDisk === $this->fallbackDisk || $activeDisk === 'local') {
+    //                 try {
+    //                     $localPath = public_path('instasure/' . $path);
+    //                     $directory = dirname($localPath);
+
+    //                     // Create directory with proper permissions
+    //                     if (!is_dir($directory)) {
+    //                         $created = mkdir($directory, 0755, true);
+    //                         if ($created) {
+    //                             // Set ownership to web server user if possible
+    //                             @chown($directory, 'www-data');
+    //                             @chgrp($directory, 'www-data');
+    //                         }
+    //                         Log::info("Created directory: {$directory} - " . ($created ? 'SUCCESS' : 'FAILED'));
+    //                     }
+
+    //                     // Try to write file
+    //                     $written = file_put_contents($localPath, $contents);
+    //                     if ($written !== false) {
+    //                         @chmod($localPath, 0644);
+    //                         @chown($localPath, 'www-data');
+    //                         Log::info("Manual file creation SUCCESS: {$localPath}");
+
+    //                         if ($this->syncEnabled) {
+    //                             $this->queueForSync($path);
+    //                         }
+    //                         return true;
+    //                     } else {
+    //                         Log::error("file_put_contents failed for: {$localPath}");
+    //                     }
+
+    //                 } catch (Exception $manualException) {
+    //                     Log::error("Manual file creation failed: " . $manualException->getMessage());
+    //                 }
+    //             }
+
+    //             $retryCount++;
+    //             if ($retryCount > $this->maxRetries || !$this->autoRetry) {
+    //                 Log::error("Failed to store file after {$retryCount} attempts");
+    //                 return false;
+    //             }
+
+    //             // Switch to fallback
+    //             if ($activeDisk === $this->primaryDisk) {
+    //                 $activeDisk = $this->fallbackDisk;
+    //                 $this->isS3Available = false;
+    //                 Log::warning("Switched to fallback storage");
+    //             }
+
+    //             sleep(1);
+    //         }
+    //     }
+
+    //     return false;
+    // }
+
+
+
+
+}
+
+
+
+#config > filesystems.php : 
+----------------------------
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Filesystem Disk
+    |--------------------------------------------------------------------------
+    |
+    | Here you may specify the default filesystem disk that should be used
+    | by the framework. The "local" disk, as well as a variety of cloud
+    | based disks are available to your application. Just store away!
+    |
+    */
+
+    'default' => env('FILESYSTEM_DRIVER', 's3'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Cloud Filesystem Disk
+    |--------------------------------------------------------------------------
+    |
+    | Many applications store files both locally and in the cloud. For this
+    | reason, you may specify a default "cloud" driver here. This driver
+    | will be bound as the Cloud disk implementation in the container.
+    |
+    */
+
+    'cloud' => env('FILESYSTEM_CLOUD', 's3'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Filesystem Disks
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure as many filesystem "disks" as you wish, and you
+    | may even configure multiple disks of the same driver. Defaults have
+    | been setup for each driver as an example of the required options.
+    |
+    | Supported Drivers: "local", "ftp", "sftp", "s3"
+    |
+    */
+
+
+    'disks' => [
+        'local' => [
+            'driver' => 'local',
+            'root' => storage_path('app'),
+            'throw' => false,
+        ],
+
+        'public' => [
+            'driver' => 'local',
+            'root' => storage_path('app/public'),
+            'url' => env('APP_URL') . '/storage',
+            'visibility' => 'public',
+            'throw' => false,
+        ],
+
+        's3' => [
+            'driver' => 's3',
+            'key' => env('S3_KEY'),
+            'secret' => env('S3_SECRET'),
+            'region' => env('S3_REGION'),
+            'bucket' => env('S3_BUCKET'),
+            'url' => env('S3_URL'),
+            'endpoint' => env('S3_ENDPOINT'),
+            'use_path_style_endpoint' => env('S3_USE_PATH_STYLE', false),
+            'throw' => false,
+            'visibility' => 'public',
+            'root' => 'instasure', // Add this back to point to /instasure directory in S3
+            'options' => [
+                'CacheControl' => 'max-age=31536000',
+                'Metadata' => [
+                    'source' => 'laravel-app'
+                ]
+            ],
+        ],
+
+        // Add this fallback disk
+        'fallback' => [
+            'driver' => 'local',
+            // 'root' => storage_path('app/instasure'), //storage path -> /app/storage/app/instasure/
+            'root' => public_path('instasure'), // Changed to public_path /app/public/instasure/
+            // 'url' => env('APP_URL') . '/storage/instasure',
+            'url' => env('APP_URL') . '/instasure',
+            'visibility' => 'public',
+            'throw' => false,
+        ],
+    ],
+    /*
+    |--------------------------------------------------------------------------
+    | Symbolic Links
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure the symbolic links that will be created when the
+    | `storage:link` Artisan command is executed. The array keys should be
+    | the locations of the links and the values should be their targets.
+    |
+    */
+
+    'links' => [
+        public_path('storage') => storage_path('app/public'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Storage Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Custom configuration for storage behavior
+    |
+    */
+
+    // 'fallback' => [
+    //     'driver' => 'local',
+    //     'root' => storage_path('app/public'), // Align with public disk
+    //     'throw' => false,
+    // ],
+
+
+
+
+    'storage_config' => [
+        'primary_disk' => env('STORAGE_PRIMARY', 's3'),
+        'fallback_disk' => env('STORAGE_FALLBACK', 'fallback'),
+        // 'fallback_disk' => env('STORAGE_FALLBACK', 'local'),
+        'sync_enabled' => env('STORAGE_SYNC_ENABLED', true),
+        'auto_retry' => env('STORAGE_AUTO_RETRY', true),
+        'max_retries' => env('STORAGE_MAX_RETRIES', 3),
+    ],
+
+];
+
+
+# app > Providers> AppServiceProvier > : 
+-----------------------------------------
+<?php
+
+namespace App\Providers;
+
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\ServiceProvider;
+use App\Services\StorageService;
+
+class AppServiceProvider extends ServiceProvider
+{
+    /**
+     * Register any application services.
+     *
+     * @return void
+     */
+    public function register()
+    {
+        //
+
+        $this->app->singleton(StorageService::class, function ($app) {
+            return new StorageService();
+        });
+    }
+
+    /**
+     * Bootstrap any application services.
+     *
+     * @return void
+     */
+    public function boot()
+    {
+        Schema::defaultStringLength(191);
+        date_default_timezone_set('Asia/Dhaka');
+    }
+}
+
+
+# app > Http > middleware > CheckStorageConnection.php : 
+----------------------------------------------------------
+<?php
+// app/Http/Middleware/CheckStorageConnection.php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use App\Services\StorageService;
+
+class CheckStorageConnection
+{
+    protected $storageService;
+
+    public function __construct(StorageService $storageService)
+    {
+        $this->storageService = $storageService;
+    }
+
+    public function handle(Request $request, Closure $next)
+    {
+        // Check S3 connection on each request (you might want to cache this)
+        $isS3Available = $this->storageService->isS3Available();
+        
+        // Share storage status with all views
+        view()->share('s3Available', $isS3Available);
+        
+        return $next($request);
+    }
+}
+
+
+# app > Helper > storage.php : 
+-------------------------------
+<?php
+// app/Helpers/storage.php
+
+use App\Services\StorageService;
+
+if (!function_exists('smart_storage')) {
+    function smart_storage(): StorageService
+    {
+        return app(StorageService::class);
+    }
+}
+
+# app > Http > Kernal.php  > Update Kernel to Include Middleware
+-----------------------------------------------------------------
+// app/Http/Kernel.php
+
+protected $middleware = [
+    // Other middleware...
+    \App\Http\Middleware\CheckStorageConnection::class,
+];
+
+
+
+
+
+# app > Console > Commands SyncStorage.php > 
+------------------------------------------------
+<?php
+// app/Console/Commands/SyncStorage.php
+
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use App\Services\StorageService;
+
+class SyncStorage extends Command
+{
+    protected $signature = 'storage:sync';
+    protected $description = 'Synchronize local files to S3';
+
+    public function handle(StorageService $storageService)
+    {
+        if (!$storageService->isS3Available()) {
+            $this->error('S3 is not available. Cannot synchronize.');
+            return 1;
+        }
+
+        $this->info('Starting storage synchronization...');
+        $results = $storageService->synchronize();
+
+        $this->info("Synchronization completed:");
+        $this->info("Successful: {$results['successful']}");
+        $this->info("Failed: {$results['failed']}");
+
+        if (!empty($results['errors'])) {
+            $this->error("Errors:");
+            foreach ($results['errors'] as $error) {
+                $this->error("- {$error}");
+            }
+        }
+
+        return 0;
+    }
+}
+
+#app > console > Kernel.php : 
+-------------------------------
+<?php
+
+namespace App\Console;
+
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+
+// use app/Services/StorageService.php
+use App\Services\StorageService;
+
+class Kernel extends ConsoleKernel
+{
+    /**
+     * The Artisan commands provided by your application.
+     *
+     * @var array
+     */
+    protected $commands = [
+        //
+    ];
+
+    /**
+     * Define the application's command schedule.
+     *
+     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
+     * @return void
+     */
+    protected function schedule(Schedule $schedule)
+    {
+
+        // // for subscription
+        // $schedule->command('subscriptions:process-renewals')
+        //     ->daily();
+
+
+
+        // // Send email every night at 00:00 for sales report
+        // $schedule->command('email:sales-report-send-daily')
+        //      ->dailyAt('00:00')
+        //     // ->everyMinute()
+        //     ->timezone('Asia/Dhaka'); // Adjust timezone as needed
+
+        $schedule->command('storage:sync')
+            //  ->everyFiveMinutes()
+             ->everyMinute()
+             ->when(function () {
+                 return app(StorageService::class)->isS3Available();
+             });
+
+
+
+
+
+        // $schedule->command('test:cron')->everyMinute(); //set the command signature and time -> when task is executed set the time . check the list in Laravel website
+    }
+
+    /**
+     * Register the commands for the application.
+     *
+     * @return void
+     */
+    protected function commands()
+    {
+        $this->load(__DIR__ . '/Commands');
+
+        require base_path('routes/console.php');
+    }
+}
+
+
+
+
+
+# in the auto load add the file []: 
+-------------------------------------
+ "autoload": {
+         "files": [
+            "app/Helpers/storage.php"
+        ],
+        "psr-4": {
+            "App\\": "app/",
+            "Database\\Factories\\": "database/factories/",
+            "Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    
+    
+#HomeController > profileUpdate() >  test function 
+-----------------------------------------------------
+ public function profileUpdate(Request $request)
+    {
+        $user = User::find(Auth::id());
+        $user->name = $request->name;
+        $user->dob = $request->dob;
+        $user->phone = $request->phone;
+        $user->email = $request->email;
+        $user->address = $request->address;
+        $user->passport_number = $request->passport_number;
+        $user->passport_expire_till = $request->passport_expire_till;
+
+        if ($request->hasFile('avatar_original')) {
+            try {
+                // Get the uploaded file
+                $file = $request->file('avatar_original');
+                $originalName = $file->getClientOriginalName(); // Get name before storing
+
+                // Option 1: Use your custom StorageService (Recommended)
+                $storageService = new StorageService();
+                $filePath = 'profile/img/' . uniqid() . '_' . $originalName;
+
+                if ($storageService->store($filePath, file_get_contents($file->getRealPath()))) {
+                    $user->avatar_original = $filePath;
+                    $user->save();
+                    Log::info('Successfully saved profile image: ' . $originalName . ' to path: ' . $filePath);
+
+                    // Check where it was actually stored
+                    if ($storageService->isS3Available()) {
+                        Log::info('File stored on S3: ' . $storageService->url($filePath));
+                    } else {
+                        Log::info('File stored locally (S3 unavailable): ' . $storageService->url($filePath));
+                    }
+                } else {
+                    Log::error('Failed to store profile image: ' . $originalName);
+                    return response()->json(['error' => 'Failed to upload image'], 500);
+                }
+
+                // Option 2: Direct Laravel Storage (your current approach, but fixed)
+                // $storedPath = $file->store('instasure/profile/img');
+                // $user->avatar_original = $storedPath;
+                // $user->save();
+                // Log::info('Saved profile img: ' . $originalName . ' to path: ' . $storedPath);
+
+            } catch (Exception $e) {
+                Log::error('Error uploading profile image: ' . $e->getMessage());
+                return response()->json(['error' => 'Upload failed: ' . $e->getMessage()], 500);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profile updated successfully',
+            'avatar_url' => isset($filePath) ? $storageService->url($filePath) : null
+        ]);
+    }
+
+
+#test the s3 synchronize: 
+-------------------------
+ashraful@instasure-dns-vm-06:~/gitlab_project/instasure-dockerized$ docker exec -it $(docker ps -qf "name=laravel_app") bash
+www@5df64d01f549:/var/www/html$ 
+www@5df64d01f549:/var/www/html$ Storage::disk('s3')->exists->('/')
+bash: syntax error near unexpected token `'s3''
+www@5df64d01f549:/var/www/html$ php artisan tinker
+Psy Shell v0.12.10 (PHP 8.3.25 — cli) by Justin Hileman
+> Storage::disk('s3')->exists('/');
+= true
+
+> $files = Storage::disk('s3')->allFiles('');
+= [
+    "profile/img/68ce7bbc75214_pexels-ralph-7834790.jpg",
+  ]
+
+> Storage::disk('s3')->delete($files)
+= true
+
+> $files = Storage::disk('s3')->allFiles('');
+= []
+
+> Cache::get('storage_sync_queue')
+= [
+    [
+      "path" => "profile/img/68cfb8cb1b8d5_1712648903_pexels-hoang-le-1042423.jpg",
+      "disk" => "fallback",
+      "timestamp" => Illuminate\Support\Carbon @1758443723 {#8836
+        date: 2025-09-21 14:35:23.454915 Asia/Dhaka (+06:00),
+      },
+      "attempts" => 0,
+    ],
+  ]
+
+#show in the view for the image => 
+-------------------------------------
+@if($s3Available)
+    <img src="{{ Storage::disk('s3')->url($image) }}" />
+@else
+    <img src="{{ url('/instasure/' . $image) }}" />
+@endif
