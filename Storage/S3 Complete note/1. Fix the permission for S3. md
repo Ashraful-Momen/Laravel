@@ -1,0 +1,55 @@
+solve the S3 storage permission : 
+------------------------------
+The issue is clear now - PHP is running as user `www` (not `www-data`), but the directory is owned by `www-data`. That's why it's not writable.
+
+The `+` in the permissions (`drwxrwsr-x+`) indicates ACLs are set. Let's fix this:
+
+## Fix Option 1: Add ACL permissions for the www user
+
+```bash
+# Exit tinker and run as root in the container
+exit
+
+# Get root access in container
+docker exec -it --user root $(docker ps -qf "name=app") bash
+
+# Add ACL for www user
+setfacl -m u:www:rwx /var/www/html/public/instasure
+setfacl -d -m u:www:rwx /var/www/html/public/instasure
+
+# Check the ACLs
+getfacl /var/www/html/public/instasure
+```
+
+## Fix Option 2: Add www user to www-data group
+
+```bash
+# As root in container
+usermod -a -G www-data www
+
+# Then restart the PHP process or container
+exit
+docker-compose restart app
+```
+
+## Fix Option 3: Change ownership to www user
+
+```bash
+# As root in container
+chown -R www:www-data /var/www/html/public/instasure
+chmod -R 775 /var/www/html/public/instasure
+```
+
+After any of these fixes, test again in tinker:
+
+```php
+php artisan tinker
+> clearstatcache();
+> is_writable('/var/www/html/public/instasure')
+// Should return true
+
+> Storage::disk('fallback')->put('test.txt', 'Hello World');
+// Should work now
+```
+
+The simplest fix is probably Option 3 - just change the owner to `www` since that's the user PHP is running as.
