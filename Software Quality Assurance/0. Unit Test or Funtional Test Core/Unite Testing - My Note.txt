@@ -1,0 +1,625 @@
+# PHP unit is a code testing pkg . download => https://phar.phpunit.de/
+----------
+
+*** Maintain the "AAA" = Arrange Act Assert 
+
+    Arrange : ready the environment for testing (ready variable or payload or method for testing)
+    Act     : Apply those env vaibales value to the functino fo the class for testing 
+    Assert  : return True / Fasle according to the test . (set the value for test , testing_function_return_value)
+
+example of the code => 
+------------------------
+<?php
+use PHPUnit\Framework\TestCase;
+
+class CheckoutTest extends TestCase
+{
+    public function testDiscountIsApplied(): void
+    {
+        // Arrange
+        $cart   = new Cart();
+        $cart->addItem('T-shirt',  20.00);
+        $cart->addItem('Mug',       5.00);
+        $checkout = new Checkout($cart);
+
+        // Act
+        $total = $checkout->getTotal();      // 25.00 – 10 % discount expected
+
+        // Assert
+        $this->assertSame(22.50, $total);
+    }
+}
+
+
+# each Test Class Function, running test one specific function : 
+-----------------------------------------------------------
+
+public function checkDiscount(){
+    assertSame(2,discount(product_price,discount_value));
+}
+
+public function checkAddition(){
+    assertSame(2,addition(1,2));
+}
+
+
+
+
+
+
+
+
+
+
+========================================== Main Part ========================================
+
+
+1. Optional : switch the php --versio if needed: 
+-----------
+>>> sudo update-alternatives --config php
+
+2. optional : create alias : 
+-------------
+>>> alias phpunit="php phpunit-12.3.15.phar"
+
+2.1. Another way to creat the alias: 
+------------------------------------
+┌─[✗]─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $alias phpunit='./vendor/bin/phpunit'
+
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $phpunit --version
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+
+3. install phpunit by composer: 
+--------------------------------
+>>> composer require --dev phpunit/phpunit
+
+4. Check the version of phpUnit: 
+---------------------------------
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit --version
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+# show the phpunit option >>> ./vendor/bin/phpunit --help
+# show the phpunit option >>> phpunit -h
+
+
+------------------------------------------------------------------------------------------------------------------
+------------------------------------ after completing the setup let's test the function --------------------------
+------------------------------------------------------------------------------------------------------------------
+
+5. CodeTest> ExampleTest.php > write a test function inside 
+------------
+
+
+5.2. ExampleTest.php : 
+------------------------
+<?php declare(strict_types=1);
+
+use PHPUnit\Framework\TestCase;
+
+final class ExampleTest extends TestCase
+{
+    public function testExampleIsTrue(): void
+    {
+        $this->assertTrue(true);
+
+        //(1st value is expected:desire output , 2nd value is actual value comes from function)
+        $this->assertSame(1,1);
+    }
+}
+
+# for running the test code run the command : 
+----------------------------------------------
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $phpunit CodeTest/ExampleTest.php 
+
+or 
+
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/ExampleTest.php 
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.003, Memory: 8.00 MB
+
+OK (1 test, 2 assertions)
+
+
+#----------------------------------------------------------------------------
+ *** use '--color'  | for showing the color output 
+#----------------------------------------------------------------------------
+
+
+┌─[✗]─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/ExampleTest.php --color
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.005, Memory: 8.00 MB
+
+OK (1 test, 1 assertion)
+
+#----------------------------------------------------------------------------
+#--------------------------------Test from other file------------------------
+#----------------------------------------------------------------------------
+
+test the function.php which in lib folder : 
+-------------------------------------------
+> lib > function.php: 
+---------------------
+
+<?php
+declare(strict_types=1);
+
+function addIntegers(int $a, int $b):int{
+    return $a+$b; 
+} 
+
+> CodeTest > TestAddition.php: 
+------------------------------
+<?php
+
+declare(strict_types=1);
+
+use PHPUnit\Framework\TestCase;
+
+require (__DIR__).'/../lib/addFuntion.php';
+
+// require_once __DIR__ . '/../lib/addFunction.php';   // correct spelling & path
+
+final class ExampleTest extends TestCase
+{
+    public function testAddTwoInteger(): void
+    {
+        
+        $this->assertSame(5,addIntegers(2,3));
+    }
+}
+
+
+>run command for testing : 
+-----------------------------
+
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/TestAddition.php --color
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.003, Memory: 8.00 MB
+
+OK (1 test, 1 assertion)
+
+> set the wrong value in the test function > then run the test command : 
+------------------------------------------------------------------------
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/TestAddition.php --color
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+F                                                                   1 / 1 (100%)
+
+Time: 00:00.008, Memory: 8.00 MB
+
+There was 1 failure:
+
+1) TestAddition::testAddTwoInteger
+Failed asserting that 4 is identical to 5.
+
+/home/shuvo/Software/PHP Unit/CodeTest/TestAddition.php:16
+
+FAILURES!
+Tests: 1, Assertions: 1, Failures: 1.
+
+#----------------------------------------------------------------------------
+#---------------------------Full Name Test ----------------------------------
+#----------------------------------------------------------------------------
+> src > Persion.php > 
+------------------------
+<?php
+declare(strict_types=1);
+
+class Person
+{
+    private string $firstName;
+    private string $lastName;
+
+    /* ---------- getters ---------- */
+    public function getFirstName(): string
+    {
+        return $this->firstName;
+    }
+
+    public function getLastName(): string
+    {
+        return $this->lastName;
+    }
+    public function fullName(){
+
+        return trim($this->firstName." ".$this->lastName);
+    }
+
+    /* ---------- setters ---------- */
+    public function setFirstName(string $firstName): void
+    {
+        $this->firstName = $firstName;
+    }
+
+    public function setLastName(string $lastName): void
+    {
+        $this->lastName = $lastName;
+    }
+
+}
+
+
+>CodeTest > PersonTest.php > 
+-------------------------
+<?php
+
+declare(strict_types=1);
+
+use PHPUnit\Framework\TestCase;
+
+// require (__DIR__).'/../src/Person.php';
+
+require_once __DIR__ . '/../src/Person.php';
+
+final class PersonTest extends TestCase
+{
+    public function testFullName(): void   // <- “test” prefix
+{
+    $person = new Person();
+    $person->setFirstName('Adiha');
+    $person->setLastName('Islam');
+
+    $this->assertSame('Adiha Isla', $person->fullName());
+}
+}
+
+
+>>> run the command for testing : 
+-----------------------------------
+
+
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/PersonTest.php --color
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.003, Memory: 8.00 MB
+
+OK (1 test, 1 assertion)
+
+
+
+
+
+# check the failer output with the set of different value : 
+-----------------------------------------------------------
+
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/PersonTest.php --color
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+F                                                                   1 / 1 (100%)
+
+Time: 00:00.008, Memory: 8.00 MB
+
+There was 1 failure:
+
+1) PersonTest::testFullName
+Failed asserting that two strings are identical.
+--- Expected
++++ Actual
+@@ @@
+-'Adiha Isla'
++'Adiha Islam'
+
+/home/shuvo/Software/PHP Unit/CodeTest/PersonTest.php:19
+
+FAILURES!
+Tests: 1, Assertions: 1, Failures: 1.
+
+-----------------------------------------------------------
+# *** check the details failer output by '--testdox' : 
+-----------------------------------------------------------
+┌─[✗]─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/PersonTest.php --color --testdox
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+F                                                                   1 / 1 (100%)
+
+Time: 00:00.009, Memory: 8.00 MB
+
+Person
+ ✘ Full name
+   ┐
+   ├ Failed asserting that two strings are identical.
+   ┊ ---·Expected
+   ┊ +++·Actual
+   ┊ @@ @@
+   ┊ -'Adiha·Isla'
+   ┊ +'Adiha·Islam'
+   │
+   │ /home/shuvo/Software/PHP Unit/CodeTest/PersonTest.php:19
+   ┴
+
+FAILURES!
+Tests: 1, Assertions: 1, Failures: 1.
+
+
+-----------------------------------------------------------
+# *** check the details pass output by '--testdox' : 
+-----------------------------------------------------------
+
+┌─[✗]─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/PersonTest.php --color --testdox
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.005, Memory: 8.00 MB
+
+Person
+ ✔ Full name
+
+OK (1 test, 1 assertion)
+
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+
+
+#----------------------------------------------------------------------------
+#-------------------------BootStrap File Add dependences---------------------
+#----------------------------------------------------------------------------
+
+***bootStrap.php > basically contain the dependency such as specific_code_file_path 
+
+
+In PersonTest.php use 'require_once __DIR__ . '/../src/Person.php'; for testing
+
+the Person class fullName function().
+
+We can move 'require_once __DIR__ . '/../src/Person.php'; into > bootStrap.php 
+as dependency. 
+
+
+*** For Testing, Run the command PersonTest file with '--bootStrap' '---bootStrap_file_name' files 
+
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/PersonTest.php --color --testdox --bootstrap CodeTest/bootstrap.php 
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.003, Memory: 8.00 MB
+
+Person
+ ✔ Full name
+
+OK (1 test, 1 assertion)
+
+
+
+
+
+
+
+
+#--------------------------------------------------------------------------------------------------------------
+#------------------------***load the Class file path with spl_autoload_register()-------------------------------
+#--------------------------------------------------------------------------------------------------------------
+***
+auto load the file path , and call the funtion 
+
+method 1 : ***spl_autoload_register () , using this function : 
+-----------------------------------------------------------
+spl_autoload_register() , this function help to call the function from another file as like import 
+
+
+
+// require_once __DIR__ . '/../src/Person.php'; //  no need this line cause 'spl_autoload_register() do the same thing 
+
+spl_autoload_register(
+    static function (string $class): void {
+        // convert Foo\Bar => Foo/Bar.php
+        $file = __DIR__ . '/../src/' . str_replace('\\', '/', $class) . '.php';
+        if (file_exists($file)) {
+            require_once $file;
+        }
+    }
+);
+
+
+then test the PersonTest with run the command : 
+----------------------------------------------
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/PersonTest.php --color --testdox --bootstrap CodeTest/bootstrap.php 
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.003, Memory: 8.00 MB
+
+Person
+ ✔ Full name
+
+OK (1 test, 1 assertion)
+
+
+----------------------------------------------------------------------------------
+method 2: using **** namespace : 
+----------------------------------------------------------------------------------
+in the Persion.php file move to App folder . => src> App > Person.php 
+
+inside the person class use the namespace; 
+
+
+<?php
+declare(strict_types=1);
+
+namespace App; 
+
+class Person
+{
+    private string $firstName;
+    private string $lastName;
+...code
+}
+
+-------------------------------
+
+***in the > CodeTest > PersonTest.php use the namespace: 
+---------------------------------------------------------
+
+<?php
+
+declare(strict_types=1);
+
+
+use PHPUnit\Framework\TestCase;
+
+// require (__DIR__).'/../src/Person.php';
+
+// require_once __DIR__ . '/../src/Person.php';
+
+use App\Person;
+
+
+final class PersonTest extends TestCase
+{...code}
+
+
+
+then test the PersonTest with the command: 
+------------------------------------------
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/PersonTest.php --color --testdox --bootstrap CodeTest/bootstrap.php 
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.003, Memory: 8.00 MB
+
+Person
+ ✔ Full name
+
+OK (1 test, 1 assertion)
+
+
+method 3 : using *** ps4 in the composer.json add : 
+---------------------------------------------------
+{
+   
+    "autoload": {
+       "psr-4": {
+        "":"src/"
+       }
+    }
+
+    
+}
+
+then run the command : >>> composer dump-autoload
+----------------------------------------------------
+
+
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $composer dump-autoload
+Generating autoload files
+Generated autoload files
+
+
+
+┌─[✗]─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/PersonTest.php --color --testdox --bootstrap vendor/autoload.php 
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.004, Memory: 8.00 MB
+
+Person
+ ✔ Full name
+
+OK (1 test, 1 assertion)
+
+
+#method 4 : add the ***file into > composer.json : 
+--------------------------------------------------
+
+
+{
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
+    },
+
+    "autoload": {
+       "psr-4": {
+        "":"src/"
+       },
+       "files": [
+        "lib/addFunction.php"
+       ]
+    }
+
+    
+}
+
+
+then run those command : 
+-------------------------
+┌─[✗]─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $composer dump-autoload
+Generating autoload files
+Generated autoload files
+┌─[shuvo@parrot]─[~/Software/PHP Unit]
+└──╼ $./vendor/bin/phpunit CodeTest/TestAddition.php --color --testdox --bootstrap vendor/autoload.php 
+PHPUnit 11.5.42 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.29
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:00.003, Memory: 8.00 MB
+
+Addition
+ ✔ Add two integer
+
+OK (1 test, 1 assertion)
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
+#----------------------------------------------------------------------------
