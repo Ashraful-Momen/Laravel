@@ -86,14 +86,10 @@ echo $total; // Output: 400
 ## Running Tests
 
 ```bash
-# Run all tests
-./vendor/bin/phpunit
 
-# Run with testdox format (readable output)
-./vendor/bin/phpunit --testdox
+# Run with testdox format (readable output) & colors
+./vendor/bin/phpunit tests --testdox --color
 
-# Run with colors
-./vendor/bin/phpunit --testdox --colors=always
 ```
 
 ## Test Results
