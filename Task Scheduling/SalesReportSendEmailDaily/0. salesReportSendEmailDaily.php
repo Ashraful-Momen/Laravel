@@ -3,7 +3,7 @@
 // ========================== ROUTES (web.php or api.php) ==========================
 Route::get('/send-daily-email', [DailyEmailController::class, 'sendDailyEmail'])->name('send.daily.email');
 
-// ========================== COMMAND (for Scheduler) ==========================
+// ========================== COMMAND (app/Console/Command/ for Scheduler) ==========================
 // php artisan make:command SendDailyEmailCommand
 
 namespace App\Console\Commands;
