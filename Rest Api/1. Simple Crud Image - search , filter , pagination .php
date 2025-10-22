@@ -204,6 +204,34 @@ public function index(Request $request)
 }
 
 
+
+  #packages Search options --------------------------------------------------------
+
+    public function search(Request $request)
+    {
+        $query = LifeAndHealth::query();
+
+        if ($request->has('search')) {
+            $searchTerm = $request->input('search');
+            $query->where('Pname', 'like', "%{$searchTerm}%")
+                  ->orWhere('duration', 'like', "%{$searchTerm}%")
+                  ->orWhere('price', 'like', "%{$searchTerm}%")
+                  ->orWhere('yearly_fee', 'like', "%{$searchTerm}%")
+                  ->orWhere('half_yearly_fee', 'like', "%{$searchTerm}%")
+                  ->orWhere('quarterly_fee', 'like', "%{$searchTerm}%")
+                  ->orWhere('monthly_fee', 'like', "%{$searchTerm}%")
+                  ->orWhere('discount', 'like', "%{$searchTerm}%")
+                  ->orWhere('life_coverage_amount', 'like', "%{$searchTerm}%")
+                  ->orWhere('hospital_coverage_amount', 'like', "%{$searchTerm}%");
+        }
+
+        $life_health = $query->get();
+
+        return view('frontend.pages.life_and_health', compact('life_health'));
+    }
+
+
+
 ----------------------------------------------------------Custom validation error----------------------------------------------------------------------------------
   public function store(Request $request)
 {
