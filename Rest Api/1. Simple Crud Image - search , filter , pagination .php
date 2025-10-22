@@ -173,38 +173,36 @@ class CrudController extends Controller
 ------------------------------------------------------ Search , Filter and Pagination ------------------------------------------------
 
 
-  // app/Http/Controllers/Api/PostController.php
-namespace App\Http\Controllers\Api;
-
-use App\Http\Controllers\Controller;
-use App\Models\Post;
-use Illuminate\Http\Request;
-
-class PostController extends Controller
+public function index(Request $request)
 {
-    // GET /api/posts?q=hello&user_id=1&per_page=5
-    public function index(Request $request)
-    {
-        // Start query
-        $query = Post::query();
+    $query = Post::query();
 
-        // 🔍 Search by title
-        if ($request->has('q')) {
-            $query->where('title', 'like', '%' . $request->q . '%');
-        }
-
-        // 🎯 Filter by user_id
-        if ($request->has('user_id')) {
-            $query->where('user_id', $request->user_id);
-        }
-
-        // 📄 Pagination (default 10 per page)
-        $posts = $query->orderBy('id', 'desc')->paginate($request->get('per_page', 10));
-
-        // Return JSON
-        return response()->json($posts);
+    // 🔍 Search by title
+    if ($request->has('q')) {
+        $query->where('title', 'like', '%' . $request->q . '%');
     }
+
+    // 🎯 Filter by user_id
+    if ($request->has('user_id')) {
+        $query->where('user_id', $request->user_id);
+    }
+
+    // 📄 Pagination (default 10 per page)
+    $perPage = $request->get('per_page', 10);
+    $posts = $query->orderBy('id', 'desc')->paginate($perPage);
+
+    // 🧾 Custom pagination response
+    return response()->json([
+        'success' => true,
+        'current_page' => $posts->currentPage(),
+        'first_page' => 1,
+        'last_page' => $posts->lastPage(),
+        'per_page' => $posts->perPage(),
+        'total' => $posts->total(),
+        'data' => $posts->items(), // only post data
+    ]);
 }
+
 
 ----------------------------------------------------------Custom validation error----------------------------------------------------------------------------------
   public function store(Request $request)
