@@ -380,3 +380,67 @@ use this for the .env => REDIS_CLIENT=predis #preredis for the client site and d
 php artisan config:clear
 php artisan cache:clear
 php artisan serve
+
+
+====================================== docker-compose.yml =========================================
+
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    container_name: saffron-postgres
+    environment:
+      POSTGRES_DB: saffron_dev
+      POSTGRES_USER: saffron_user
+      POSTGRES_PASSWORD: saffron_password_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    command: >
+      postgres
+      -c listen_addresses=*
+      -c password_encryption=scram-sha-256
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saffron_user -d saffron_dev"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: saffron-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: saffron-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@saffronbd.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: saffron-network
+
