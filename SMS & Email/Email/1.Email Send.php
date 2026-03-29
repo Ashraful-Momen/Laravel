@@ -6,13 +6,12 @@
 MAIL_MAILER=smtp
 MAIL_HOST=smtppro.zoho.com
 MAIL_PORT=465
-MAIL_USERNAME=stbl.erp@smartbd.com
-MAIL_PASSWORD=vdm8*bfH
+MAIL_USERNAME=*****
+MAIL_PASSWORD=******
 MAIL_FROM_ADDRESS=stbl.erp@smartbd.com
 MAIL_FROM_NAME="${APP_NAME}"
 MAIL_ENCRYPTION=ssl
-MAIL_DEFAULT_SENDER=stbl.erp@smartbd.com
-
+MAIL_DEFAULT_SENDER=*******
 
 #****: Use this sms config =>
 # # SMS Configuration
